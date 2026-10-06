@@ -1,6 +1,6 @@
 import { type Ref, type RefCallback, useLayoutEffect, useState } from "react";
 
-/** Motion keeps its ref callback stable, so forward ref changes in a layout effect. */
+/** Motion 组件的 ref 回调始终不变，传入的 ref 变化时不会重新绑定，因此改在 layout effect 中转发 */
 export function useMotionElementRef<T>(
 	external: Ref<T> | undefined,
 ): RefCallback<T> {

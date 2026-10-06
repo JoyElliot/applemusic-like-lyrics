@@ -1,6 +1,6 @@
 import { type Ref, type RefCallback, useCallback } from "react";
 
-/** Compose a component's DOM ref with a caller's ref, including React 19 cleanup. */
+/** 合并组件内部的 DOM ref 与调用方传入的 ref，支持 React 19 的 ref 清理函数 */
 export function useComposedRefs<T>(
 	internal: React.RefObject<T | null>,
 	external: Ref<T> | undefined,

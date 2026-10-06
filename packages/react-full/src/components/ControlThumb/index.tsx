@@ -13,9 +13,9 @@ import styles from "./index.module.css";
 
 export type ControlThumbProps = {
 	onClick?: () => void;
-	/** Ref to the interactive button; the forwarded ref targets its container. */
+	/** 实际可交互按钮的 ref，组件本身转发的 ref 则指向外层容器 */
 	buttonRef?: Ref<HTMLButtonElement>;
-	/** Accessible name for the collapse button. */
+	/** 收起按钮的无障碍名称 */
 	buttonLabel?: string;
 } & HTMLProps<HTMLDivElement>;
 

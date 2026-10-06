@@ -16,7 +16,7 @@ export const AutoLyricLayout: React.FC<
 		smallControlsSlot?: React.ReactNode;
 		bigControlsSlot?: React.ReactNode;
 		coverSlot?: React.ReactNode;
-		/** Layout anchor for the cover, unaffected by the cover's own transforms. */
+		/** 封面容器的 ref，不受封面自身变换的影响 */
 		coverFrameRef?: Ref<HTMLDivElement>;
 		lyricSlot?: React.ReactNode;
 		backgroundSlot?: React.ReactNode;

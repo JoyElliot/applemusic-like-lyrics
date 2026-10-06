@@ -24,7 +24,7 @@ export type CoverProps = {
 	coverUrl?: string;
 	coverIsVideo?: boolean;
 	coverVideoPaused?: boolean;
-	/** The live video element, when coverIsVideo is true. */
+	/** 封面视频元素的 ref，仅在 `coverIsVideo` 为 true 时指向视频元素，切换为图片封面时会被清空 */
 	videoRef?: Ref<HTMLVideoElement>;
 	musicPaused?: boolean;
 	pauseShrinkAspect?: number;
@@ -66,7 +66,7 @@ export const Cover: ForwardRefExoticComponent<
 					videoEl.pause();
 				} else {
 					void videoEl.play().catch(() => {
-						// Pausing, replacing the source, or autoplay policy can cancel playback.
+						// 暂停、替换视频源或自动播放策略都可能中断播放请求，忽略即可
 					});
 				}
 			}

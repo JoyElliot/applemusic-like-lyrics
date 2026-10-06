@@ -516,24 +516,65 @@ const PrebuiltMusicControls: FC<
 export interface PrebuiltLyricPlayerProps extends HTMLProps<HTMLDivElement> {
 	bottomLineSlot?: React.ReactNode;
 	optimizeOptions?: OptimizeLyricOptions;
-	/** Layout anchor, including the layout's mask but not the cover's own transform. */
+	/**
+	 * 布局中封面容器的 ref，可作为共享元素过渡的锚点
+	 *
+	 * 该容器包含沉浸布局的遮罩，但不包含封面自身的暂停缩放。
+	 * 横竖布局切换时，ref 可能先解除绑定再指向新的节点，
+	 * 调用方应跟随 ref 更新，不应缓存旧节点或移除由 React 管理的节点。
+	 */
 	coverFrameRef?: React.Ref<HTMLDivElement>;
-	/** Attributes and ref for the live cover. Media state remains controlled by atoms. */
+	/**
+	 * 传给封面组件根节点的 DOM 属性、样式及 ref
+	 *
+	 * 封面地址、媒体类型和播放状态仍由对应的 atom 管理。
+	 * 可通过 `videoRef` 获取封面视频元素以协调画面交接，切换为图片封面时会被清空；
+	 * 设置 `coverVideoPaused` 会禁止视频自动播放。
+	 * 与 {@link PrebuiltLyricPlayerProps.coverFrameRef} 一样，布局切换时 ref 可能指向新的节点。
+	 */
 	coverProps?: Omit<
 		ComponentPropsWithRef<typeof Cover>,
 		"coverUrl" | "coverIsVideo" | "musicPaused"
 	>;
-	/** Attributes, container ref, and button ref for the collapse control. */
+	/**
+	 * 传给收起控件的属性
+	 *
+	 * `ref` 指向控件容器，`buttonRef` 指向实际的按钮，`buttonLabel` 为按钮提供无障碍名称。
+	 * 显式传入的 `onClick` 优先于 {@link onClickControlThumbAtom} 中的回调。
+	 * ref 支持对象形式、回调形式以及 React 19 的清理函数。
+	 */
 	controlThumbProps?: ComponentPropsWithRef<typeof ControlThumb>;
-	/** Text-container attributes/ref for the active layout only; excludes the menu button. */
+	/**
+	 * 传给歌曲信息文字容器的属性及 ref，不包含菜单按钮
+	 *
+	 * 只会应用到当前布局中正在显示的歌曲信息上。
+	 */
 	musicInfoProps?: ComponentPropsWithRef<typeof MusicInfo>["infoProps"];
-	/** Controlled state of the host application's playlist panel. */
+	/**
+	 * 宿主应用中播放列表面板的打开状态，会反映到播放列表按钮的 `aria-expanded` 上
+	 *
+	 * @default false
+	 */
 	playlistOpened?: boolean;
-	/** Requests the next playlist state; does not create or manage a panel. */
+	/**
+	 * 点击播放列表按钮时触发，参数为请求切换到的打开状态
+	 *
+	 * 本组件不会创建播放列表面板，也不会修改宿主的播放队列。
+	 *
+	 * @example
+	 * ```tsx
+	 * <PrebuiltLyricPlayer
+	 *   playlistOpened={queueOpen}
+	 *   onPlaylistOpenedChange={setQueueOpen}
+	 *   playlistControls="play-queue"
+	 *   playlistButtonLabel="播放队列"
+	 * />
+	 * ```
+	 */
 	onPlaylistOpenedChange?: (opened: boolean) => void;
-	/** ID of the panel controlled by both playlist buttons. */
+	/** 播放列表面板的元素 ID，会作为播放列表按钮的 `aria-controls` */
 	playlistControls?: string;
-	/** Accessible name shared by the playlist buttons. */
+	/** 横竖布局中播放列表按钮共用的无障碍名称 */
 	playlistButtonLabel?: string;
 }
 
