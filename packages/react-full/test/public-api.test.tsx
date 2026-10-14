@@ -1,5 +1,12 @@
 import { createStore, Provider } from "jotai";
-import { act, createRef, StrictMode } from "react";
+import {
+	act,
+	createRef,
+	StrictMode,
+	Suspense,
+	startTransition,
+	useLayoutEffect,
+} from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -63,19 +70,24 @@ class MockResizeObserver implements ResizeObserver {
 /** 记录回调 ref 当前持有的节点，并在清理时移除，用于检查 ref 的替换和清理 */
 function createTrackedRefs() {
 	const active = new Map<string, HTMLElement>();
+	const cleanups: ReturnType<typeof vi.fn>[] = [];
+	const nullCalls: string[] = [];
 	const track =
 		<T extends HTMLElement>(key: string) =>
 		(node: T | null) => {
 			if (!node) {
+				nullCalls.push(key);
 				active.delete(key);
 				return;
 			}
 			active.set(key, node);
-			return () => {
+			const cleanup = vi.fn(() => {
 				active.delete(key);
-			};
+			});
+			cleanups.push(cleanup);
+			return cleanup;
 		};
-	return { active, track };
+	return { active, track, cleanups, nullCalls };
 }
 
 describe("PrebuiltLyricPlayer 公开接口", () => {
@@ -190,25 +202,143 @@ describe("PrebuiltLyricPlayer 公开接口", () => {
 		expect(onEmit).not.toHaveBeenCalled();
 	});
 
+	it.each(["对象", "回调"])(
+		"$0 ref 在首次宿主布局 effect 时同步可用",
+		async (kind) => {
+			const frameRef = createRef<HTMLDivElement>();
+			const buttonRef = createRef<HTMLButtonElement>();
+			const samples: [
+				HTMLDivElement | null,
+				HTMLButtonElement | null,
+				Element | null,
+			][] = [];
+			const props: PrebuiltLyricPlayerProps = {
+				coverFrameRef:
+					kind === "对象"
+						? frameRef
+						: (node) => {
+								frameRef.current = node;
+							},
+				controlThumbProps: {
+					buttonRef:
+						kind === "对象"
+							? buttonRef
+							: (node) => {
+									buttonRef.current = node;
+								},
+				},
+			};
+			function Host() {
+				useLayoutEffect(() => {
+					buttonRef.current?.focus();
+					samples.push([
+						frameRef.current,
+						buttonRef.current,
+						document.activeElement,
+					]);
+				}, []);
+				return (
+					<PrebuiltLyricPlayer style={LAYOUT_SIZES.horizontal} {...props} />
+				);
+			}
+			await act(async () =>
+				root.render(
+					<StrictMode>
+						<Provider store={store}>
+							<Host />
+						</Provider>
+					</StrictMode>,
+				),
+			);
+			expect(samples.length).toBeGreaterThan(0);
+			for (const [frame, button, focused] of samples) {
+				expect(frame).toBeInstanceOf(HTMLDivElement);
+				expect(button).toBeInstanceOf(HTMLButtonElement);
+				expect(focused).toBe(button);
+			}
+		},
+	);
+
 	it("替换回调 ref 时清理旧的 ref，并把同一节点交给新的 ref", async () => {
-		const { active, track } = createTrackedRefs();
-		await render({
+		const { active, track, cleanups, nullCalls } = createTrackedRefs();
+		const first = {
 			coverFrameRef: track("frame1"),
 			controlThumbProps: { buttonRef: track("button1") },
-		});
+		};
+		await render(first);
 		const frame = active.get("frame1");
 		const button = active.get("button1");
 		expect(frame).toBeDefined();
 		expect(button?.tagName).toBe("BUTTON");
+		const before = cleanups.map((cleanup) => cleanup.mock.calls.length);
+		await render(first);
+		expect(cleanups.map((cleanup) => cleanup.mock.calls.length)).toEqual(
+			before,
+		);
 
-		await render({
+		const second = {
 			coverFrameRef: track("frame2"),
 			controlThumbProps: { buttonRef: track("button2") },
-		});
+		};
+		await render(second);
 		expect(active.has("frame1")).toBe(false);
 		expect(active.has("button1")).toBe(false);
 		expect(active.get("frame2")).toBe(frame);
 		expect(active.get("button2")).toBe(button);
+		await render({});
+		expect(active.size).toBe(0);
+		await render(second);
+		expect(active.get("frame2")).toBe(frame);
+		expect(active.get("button2")).toBe(button);
+		await act(async () => root.unmount());
+		expect(active.size).toBe(0);
+		expect(nullCalls).toEqual([]);
+		for (const cleanup of cleanups) expect(cleanup).toHaveBeenCalledTimes(1);
+	});
+
+	it("没有返回清理函数的回调 ref 在移除时收到 null", async () => {
+		const buttonRef = vi.fn<(node: HTMLButtonElement | null) => void>();
+		await render({ controlThumbProps: { buttonRef } });
+		expect(buttonRef.mock.lastCall?.[0]).toBeInstanceOf(HTMLButtonElement);
+		await render({});
+		expect(buttonRef).toHaveBeenLastCalledWith(null);
+		const calls = buttonRef.mock.calls.length;
+		await act(async () => root.unmount());
+		expect(buttonRef).toHaveBeenCalledTimes(calls);
+	});
+
+	it("未提交的并发渲染不会替换当前 ref 的清理目标", async () => {
+		const first = vi.fn<(node: HTMLButtonElement | null) => void>();
+		const discarded = vi.fn<(node: HTMLButtonElement | null) => void>();
+		const attempted = vi.fn();
+		const pending = new Promise<never>(() => {});
+		function Blocker({ suspend }: { suspend: boolean }) {
+			if (suspend) {
+				attempted();
+				throw pending;
+			}
+			return null;
+		}
+		const view = (suspend: boolean) => (
+			<StrictMode>
+				<Suspense fallback={null}>
+					<Provider store={store}>
+						<PrebuiltLyricPlayer
+							style={LAYOUT_SIZES.horizontal}
+							controlThumbProps={{ buttonRef: suspend ? discarded : first }}
+						/>
+						<Blocker suspend={suspend} />
+					</Provider>
+				</Suspense>
+			</StrictMode>
+		);
+		await act(async () => root.render(view(false)));
+		await act(async () => startTransition(() => root.render(view(true))));
+		expect(attempted).toHaveBeenCalled();
+		expect(discarded).not.toHaveBeenCalled();
+		await act(async () => root.unmount());
+		expect(first).toHaveBeenLastCalledWith(null);
+		expect(discarded).not.toHaveBeenCalled();
 	});
 
 	it("对象 ref 可以替换回调 ref", async () => {
